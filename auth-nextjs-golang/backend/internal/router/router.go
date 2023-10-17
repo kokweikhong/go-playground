@@ -39,6 +39,7 @@ func Init() *chi.Mux {
 		})
 
 		r.Post("/login", userController.Login)
+		r.Post("/auth/refresh", userController.RefreshToken)
 
 		r.Route("/users", func(r chi.Router) {
 			r.Use(myMiddleWare.AuthMiddleware)

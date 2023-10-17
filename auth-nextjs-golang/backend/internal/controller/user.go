@@ -18,6 +18,7 @@ type UserController interface {
 	UpdateUser(w http.ResponseWriter, r *http.Request)
 	DeleteUser(w http.ResponseWriter, r *http.Request)
 	Login(w http.ResponseWriter, r *http.Request)
+	RefreshToken(w http.ResponseWriter, r *http.Request)
 }
 
 type userController struct{}
@@ -110,18 +111,30 @@ func (c *userController) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&user)
 	for _, u := range users {
 		if strings.EqualFold(user.Email, u.Email) && strings.EqualFold(user.Password, u.Password) {
-			token, err := middleware.NewJWTClaims(user.Username)
+			token, payload, err := middleware.NewJWTClaims(user.Email)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+
+			rToken, rPayload, err := middleware.NewRefreshToken(user.Email)
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 
 			var data = struct {
-				Token string `json:"accessToken"`
+				AccessToken       string `json:"accessToken"`
+				AccessTokenExpiry int64  `json:"accessTokenExpiry"`
+				RefreshToken      string `json:"refreshToken"`
+				RereshTokenExpiry int64  `json:"refreshTokenExpiry"`
 				*User
 			}{
-				Token: token,
-				User:  u,
+				AccessToken:       token,
+				AccessTokenExpiry: payload.Expiry,
+				RefreshToken:      rToken,
+				RereshTokenExpiry: rPayload.Expiry,
+				User:              u,
 			}
 
 			json.NewEncoder(w).Encode(data)
@@ -131,4 +144,47 @@ func (c *userController) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusUnauthorized)
 
+}
+
+func (c *userController) RefreshToken(w http.ResponseWriter, r *http.Request) {
+	// get refresh token from body
+	type RefreshToken struct {
+		Username string `json:"username"`
+		Token    string `json:"refreshToken"`
+	}
+
+	var rt RefreshToken
+
+	if err := json.NewDecoder(r.Body).Decode(&rt); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// validate refresh token
+	valid, err := middleware.ValidateJWTToken(rt.Token)
+	if err != nil || !valid {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	// if valid, generate new access token
+	tokenString, payload, err := middleware.NewJWTClaims(rt.Username)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// return new access token
+	var data = struct {
+		AccessToken       string `json:"accessToken"`
+		AccessTokenExpiry int64  `json:"accessTokenExpiry"`
+	}{
+		AccessToken:       tokenString,
+		AccessTokenExpiry: payload.Expiry,
+	}
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }

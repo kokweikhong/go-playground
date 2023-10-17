@@ -5,8 +5,6 @@ import { NextRequest, NextResponse } from "next/server";
 export default withAuth(
   // `withAuth` augments your `Request` with the user's token.
   function middleware(req) {
-    console.log("token: ", req.nextauth.token);
-
     if (
       req.nextUrl.pathname.startsWith("/admin") &&
       req.nextauth.token?.role !== "admin"
@@ -14,13 +12,10 @@ export default withAuth(
       return NextResponse.rewrite(
         new URL("/auth/login?message=You Are Not Authorized!", req.url)
       );
-    // if (
-    //   req.nextUrl.pathname.startsWith("/user") &&
-    //   req.nextauth.token?.role !== "user"
-    // )
-    //   return NextResponse.rewrite(
-    //     new URL("/auth/login?message=You Are Not Authorized!", req.url)
-    //   );
+    if (req.nextauth.token?.error === "RefreshTokenExpired")
+      return NextResponse.redirect(
+        new URL("/auth/login?message=Session Expired!", req.url)
+      );
   },
   {
     callbacks: {

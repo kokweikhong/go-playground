@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -49,9 +50,20 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 const JWT_SECRET = "my_jwt_secret"
 
+type JWTCustomClaims struct {
+	Username string `json:"username"`
+	jwt.RegisteredClaims
+}
+
+type JWTPayload struct {
+	Username string `json:"username"`
+	Issuer   string `json:"iss"`
+	Expiry   int64  `json:"exp"`
+}
+
 func ValidateJWTToken(tokenString string) (bool, error) {
-	// parse token
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+	// parse with JWTCustomClaims
+	token, err := jwt.ParseWithClaims(tokenString, &JWTCustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// validate signing method
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("Unexpected signing method: %s", token.Header["alg"])
@@ -59,57 +71,80 @@ func ValidateJWTToken(tokenString string) (bool, error) {
 		// return secret key
 		return []byte(JWT_SECRET), nil
 	})
+	if err != nil {
+		return false, err
+	}
 
 	// validate token
-	if _, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+	if _, ok := token.Claims.(*JWTCustomClaims); ok && token.Valid {
 		return true, nil
 	}
 
 	// return false if token is invalid
-	return false, err
+	return false, nil
 }
 
-func NewJWTClaims(user string) (string, error) {
-	// // get user service
-	// userService := service.NewUser()
-	// // get user by username
-	// user, err := userService.GetUserByUsername(username)
-	// if err != nil {
-	// 	return "", err
-	// }
+// return payload and token string
+func NewJWTClaims(username string) (string, *JWTPayload, error) {
+	// create new token with JWTCustomClaims
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, JWTCustomClaims{
+		username,
+		jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 15)),
+			Issuer:    "myapp",
+		},
+	})
 
-	// // compare password with bcrypt and error handling
-	// err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-	// if err != nil {
-	// 	return "", err
-	// }
-	token := jwt.New(jwt.SigningMethodHS256)
-
-	claims := token.Claims.(jwt.MapClaims)
-	claims["username"] = user
-	claims["exp"] = time.Now().Add(10 * time.Second).Unix()
-
-	// generate encoded token and send it as response
-	// the signing string should be secret (a generated UUID works too)
-	t, err := token.SignedString([]byte(JWT_SECRET))
+	// sign token with secret key
+	tokenString, err := token.SignedString([]byte(JWT_SECRET))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return t, nil
+	// get payload
+	payload, err := json.Marshal(token.Claims)
+	if err != nil {
+		return "", nil, err
+	}
+
+	jwtPayload := new(JWTPayload)
+	if err := json.Unmarshal(payload, jwtPayload); err != nil {
+		return "", nil, err
+	}
+
+	return tokenString, jwtPayload, nil
 }
 
-func NewRefreshToken() (string, error) {
-	refreshToken := jwt.New(jwt.SigningMethodHS256)
-	rtClaims := refreshToken.Claims.(jwt.MapClaims)
-	rtClaims["sub"] = 1
-	rtClaims["exp"] = time.Now().Add(time.Hour * 24).Unix()
+func NewRefreshToken(username string) (string, *JWTPayload, error) {
+	// create new token with JWTCustomClaims
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, JWTCustomClaims{
+		username,
+		jwt.RegisteredClaims{
+			// 1 minute
+			// ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Minute * 1)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 10)),
+			Issuer:    "myapp",
+		},
+	})
 
-	rt, err := refreshToken.SignedString([]byte(JWT_SECRET))
+	// sign token with secret key
+	tokenString, err := token.SignedString([]byte(JWT_SECRET))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return rt, nil
+
+	// get payload
+	payload, err := json.Marshal(token.Claims)
+	if err != nil {
+		return "", nil, err
+	}
+
+	jwtPayload := new(JWTPayload)
+	if err := json.Unmarshal(payload, jwtPayload); err != nil {
+		return "", nil, err
+	}
+
+	return tokenString, jwtPayload, nil
 }
 
 func ExtractJWTClaims(tokenString string) (jwt.MapClaims, error) {

@@ -6,7 +6,6 @@ import { User } from "@/types/user";
 
 export default function Page() {
   const { data: session } = useSession();
-  console.log(session);
 
   const [users, setUsers] = React.useState<User[]>([]);
 

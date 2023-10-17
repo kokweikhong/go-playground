@@ -8,7 +8,10 @@ declare module "next-auth" {
       email: string;
       role?: string;
       accessToken: string;
-      maxAge: number;
+      accessTokenExpiry: number;
+      refreshToken: string;
+      refreshTokenExpiry: number;
+      error: string;
     };
   }
 }
