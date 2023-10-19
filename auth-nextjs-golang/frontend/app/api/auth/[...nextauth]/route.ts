@@ -1,6 +1,7 @@
 import NextAuth from "next-auth/next";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { JWT } from "next-auth/jwt";
+import { AuthOptions } from "next-auth";
 
 // refresh token if access token expired
 async function refreshToken(token: JWT) {
@@ -35,7 +36,7 @@ async function refreshToken(token: JWT) {
   };
 }
 
-const handler = NextAuth({
+export const authOptions: AuthOptions = {
   // session: {
   //   strategy: "jwt",
   //   // 10 seconds
@@ -109,6 +110,8 @@ const handler = NextAuth({
       return session;
     },
   },
-});
+};
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };
